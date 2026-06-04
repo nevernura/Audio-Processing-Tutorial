@@ -275,7 +275,7 @@
   }
 
   function IntroViz(){
-    let cv,ctx,raf,t=0;
+    let cv,ctx,raf,t=0,mode="messages";
     const words=["traffic","audio","image","gesture","code","sensor","voice","music","beacon","heartbeat"];
     return {
       controls:[
@@ -286,7 +286,6 @@
       mount(host){ cv=el("canvas"); host.appendChild(cv); loop(); },
       unmount(){ cancelAnimationFrame(raf); }
     };
-    let mode="messages";
     function loop(){ raf=requestAnimationFrame(loop); t+=0.018; draw(); }
     function draw(){
       const dpr=fitCanvas(cv), W=cv.width, H=cv.height; ctx=ctx || cv.getContext("2d");
@@ -586,10 +585,23 @@
   }
 
   function SpectrogramViz(){
-    let cv,gl,prog,tex,raf,analyser,srcNode,stream,freqData;
+    let cv,gl,prog,tex,raf,analyser,srcNode,stream,freqData,fileEl;
     let writeCol=0,HIST=1024,bins=1024,running=false;
     let source="tone",scale="log",gain=0.72,cmap=0;
     let uHead,uLog,uMinF,uGain,uMap;
+    const VERT=`attribute vec2 p; varying vec2 uv; void main(){ uv=p*0.5+0.5; gl_Position=vec4(p,0.,1.);}`;
+    const FRAG=`
+      precision mediump float; varying vec2 uv; uniform sampler2D tex;
+      uniform float head, logScale, minF, gainv; uniform int cmap;
+      vec3 sunset(float t){ return mix(vec3(0.05,0.08,0.2), mix(vec3(1.0,0.22,0.6), vec3(1.0,0.86,0.22), smoothstep(.45,1.0,t)), smoothstep(.02,1.0,t)); }
+      vec3 ocean(float t){ return mix(vec3(0.04,0.08,0.18), mix(vec3(0.08,0.84,0.82), vec3(0.86,1.0,0.52), smoothstep(.55,1.0,t)), smoothstep(.02,1.0,t)); }
+      void main(){
+        float fN=(logScale>.5)?pow(minF,1.0-uv.y):uv.y;
+        float m=texture2D(tex,vec2(uv.x+head,clamp(fN,0.0,1.0))).r;
+        m=clamp(pow(m,gainv),0.0,1.0);
+        vec3 c=(cmap==0)?sunset(m):ocean(m);
+        gl_FragColor=vec4(c,1.0);
+      }`;
     return {
       controls:[
         {type:"seg",label:"Source",opts:[["tone","Sweep"],["mic","Mic"],["file","File"]],val:()=>source,on:v=>{source=v; if(v==="file") fileEl.click(); restart();}},
@@ -608,7 +620,6 @@
       },
       unmount(){ stop(); if(fileEl) fileEl.remove(); fileEl=null; }
     };
-    let fileEl;
     function ensureFile(){
       if(!fileEl){
         fileEl=el("input"); fileEl.type="file"; fileEl.accept="audio/*"; fileEl.style.display="none";
@@ -616,19 +627,6 @@
         fileEl.addEventListener("change",()=>{ if(fileEl.files.length){ source="file"; restart(); }});
       }
     }
-    const VERT=`attribute vec2 p; varying vec2 uv; void main(){ uv=p*0.5+0.5; gl_Position=vec4(p,0.,1.);}`;
-    const FRAG=`
-      precision mediump float; varying vec2 uv; uniform sampler2D tex;
-      uniform float head, logScale, minF, gainv; uniform int cmap;
-      vec3 sunset(float t){ return mix(vec3(0.05,0.08,0.2), mix(vec3(1.0,0.22,0.6), vec3(1.0,0.86,0.22), smoothstep(.45,1.0,t)), smoothstep(.02,1.0,t)); }
-      vec3 ocean(float t){ return mix(vec3(0.04,0.08,0.18), mix(vec3(0.08,0.84,0.82), vec3(0.86,1.0,0.52), smoothstep(.55,1.0,t)), smoothstep(.02,1.0,t)); }
-      void main(){
-        float fN=(logScale>.5)?pow(minF,1.0-uv.y):uv.y;
-        float m=texture2D(tex,vec2(uv.x+head,clamp(fN,0.0,1.0))).r;
-        m=clamp(pow(m,gainv),0.0,1.0);
-        vec3 c=(cmap==0)?sunset(m):ocean(m);
-        gl_FragColor=vec4(c,1.0);
-      }`;
     function compile(type,src){
       const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
       if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
