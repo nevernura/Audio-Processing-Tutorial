@@ -1,0 +1,41 @@
+{
+  "name": "audio-processing-tutorial",
+  "version": "0.2.0",
+  "description": "Interactive audio signal tutorial with upload spectrograms and synced sound galleries.",
+  "scripts": {
+    "setup:dev": "bash scripts/setup_dev.sh",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "check:python": "python3 -m py_compile scripts/spectrogram/compute_spectrogram.py",
+    "check": "npm run typecheck && npm run check:python && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nevernura/Audio-Processing-Tutorial.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/nevernura/Audio-Processing-Tutorial/issues"
+  },
+  "homepage": "https://github.com/nevernura/Audio-Processing-Tutorial#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.107.0",
+    "next": "^16.2.7",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  },
+  "private": true,
+  "overrides": {
+    "postcss": "8.5.15"
+  }
+}
