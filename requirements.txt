@@ -1,0 +1,5 @@
+# Optional but recommended for broad upload support in the spectrogram endpoint.
+# Without these packages, the endpoint falls back to uncompressed WAV files only.
+librosa
+soundfile
+numpy

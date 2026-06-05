@@ -1,0 +1,9 @@
+.next/
+out/
+node_modules/
+.env*.local
+.env
+.DS_Store
+*.pyc
+__pycache__/
+tsconfig.tsbuildinfo
