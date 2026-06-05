@@ -17,8 +17,10 @@ type LiveSource = {
   analyser: AnalyserNode;
   oscillator?: OscillatorNode;
   gain?: GainNode;
+  analyserSink?: GainNode;
   stream?: MediaStream;
   startedAt: number;
+  lastLabelAt: number;
 };
 
 const MAX_BROWSER_DURATION = 24;
@@ -45,6 +47,7 @@ export default function UploadPage() {
   const [liveRunning, setLiveRunning] = useState(false);
   const [liveLabel, setLiveLabel] = useState("Generated sweep · idle");
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const liveLabelRef = useRef("Generated sweep · idle");
   const liveSourceRef = useRef<LiveSource | null>(null);
   const liveRafRef = useRef<number | null>(null);
   const liveColumnRef = useRef(0);
@@ -68,6 +71,7 @@ export default function UploadPage() {
       source.oscillator.disconnect();
     }
     source?.gain?.disconnect();
+    source?.analyserSink?.disconnect();
     if (source?.stream) {
       source.stream.getTracks().forEach((track) => track.stop());
     }
@@ -151,12 +155,16 @@ export default function UploadPage() {
     oscillator.type = "sawtooth";
     oscillator.frequency.value = 120;
     gain.gain.value = 0.11;
+    const analyserSink = context.createGain();
+    analyserSink.gain.value = 0;
     oscillator.connect(gain);
     gain.connect(analyser);
     gain.connect(context.destination);
+    analyser.connect(analyserSink);
+    analyserSink.connect(context.destination);
     oscillator.start();
 
-    const source: LiveSource = { context, analyser, oscillator, gain, startedAt: context.currentTime };
+    const source: LiveSource = { context, analyser, oscillator, gain, analyserSink, startedAt: context.currentTime, lastLabelAt: 0 };
     liveSourceRef.current = source;
     liveColumnRef.current = 0;
     setLiveRunning(true);
@@ -178,9 +186,13 @@ export default function UploadPage() {
       analyser.fftSize = LIVE_FFT_SIZE;
       analyser.smoothingTimeConstant = 0.62;
       const input = context.createMediaStreamSource(stream);
+      const analyserSink = context.createGain();
+      analyserSink.gain.value = 0;
       input.connect(analyser);
+      analyser.connect(analyserSink);
+      analyserSink.connect(context.destination);
 
-      const source: LiveSource = { context, analyser, stream, startedAt: context.currentTime };
+      const source: LiveSource = { context, analyser, stream, analyserSink, startedAt: context.currentTime, lastLabelAt: 0 };
       liveSourceRef.current = source;
       liveColumnRef.current = 0;
       setLiveRunning(true);
@@ -202,13 +214,23 @@ export default function UploadPage() {
       const phase = (elapsed % SWEEP_SECONDS) / SWEEP_SECONDS;
       const frequency = 120 * Math.pow(8000 / 120, phase);
       source.oscillator.frequency.setTargetAtTime(frequency, source.context.currentTime, 0.015);
-      setLiveLabel(`Generated sweep · ${Math.round(frequency)} Hz`);
+      const label = `Generated sweep · ${Math.round(frequency)} Hz`;
+      updateLiveLabel(source, label);
+      drawSweepColumn(canvas, frequency, liveColumnRef, label);
     } else {
-      setLiveLabel("Microphone · live analyser");
+      updateLiveLabel(source, "Microphone · live analyser");
+      drawAnalyserColumn(canvas, source.analyser, liveColumnRef, liveLabelRef.current);
     }
-
-    drawAnalyserColumn(canvas, source.analyser, liveColumnRef);
     liveRafRef.current = requestAnimationFrame(() => drawLiveFrame(source, sourceMode));
+  }
+
+  function updateLiveLabel(source: LiveSource, label: string) {
+    liveLabelRef.current = label;
+    const now = source.context.currentTime;
+    if (now - source.lastLabelAt > 0.2) {
+      source.lastLabelAt = now;
+      setLiveLabel(label);
+    }
   }
 
   const activeMode = MODES.find((item) => item.id === mode) || MODES[0];
@@ -452,11 +474,39 @@ function drawLivePlaceholder(canvas: HTMLCanvasElement | null, mode: Mode) {
   ctx.fillText(text, width / 2, height / 2);
 }
 
-function drawAnalyserColumn(canvas: HTMLCanvasElement, analyser: AnalyserNode, columnRef: { current: number }) {
-  const { ctx, width, height, dpr } = prepareLiveCanvas(canvas, true);
+function drawSweepColumn(canvas: HTMLCanvasElement, frequency: number, columnRef: { current: number }, label: string) {
+  const { ctx, width, height, dpr, sizeChanged } = prepareLiveCanvas(canvas, true);
   if (!ctx) return;
 
-  if (columnRef.current === 0) {
+  if (columnRef.current === 0 || sizeChanged) {
+    drawLiveBackground(ctx, width, height, dpr);
+  }
+
+  const columnWidth = Math.max(2, Math.floor(2 * dpr));
+  const x = columnRef.current % width;
+  if (x < columnWidth) {
+    drawLiveBackground(ctx, width, height, dpr);
+  }
+
+  const yCenter = frequencyToY(frequency, height);
+  for (let y = 0; y < height; y += columnWidth) {
+    const distance = Math.abs(y - yCenter) / Math.max(1, 30 * dpr);
+    const harmonicDistance = Math.abs(y - frequencyToY(frequency * 2, height)) / Math.max(1, 42 * dpr);
+    const value = Math.max(Math.exp(-distance * distance), 0.45 * Math.exp(-harmonicDistance * harmonicDistance));
+    ctx.fillStyle = colorRamp(value);
+    ctx.fillRect(x, y, columnWidth, columnWidth + 1);
+  }
+
+  drawLiveHeader(ctx, width, dpr, label);
+  drawLiveCursor(ctx, x + columnWidth, height, dpr);
+  columnRef.current = (x + columnWidth) % width;
+}
+
+function drawAnalyserColumn(canvas: HTMLCanvasElement, analyser: AnalyserNode, columnRef: { current: number }, label: string) {
+  const { ctx, width, height, dpr, sizeChanged } = prepareLiveCanvas(canvas, true);
+  if (!ctx) return;
+
+  if (columnRef.current === 0 || sizeChanged) {
     drawLiveBackground(ctx, width, height, dpr);
   }
 
@@ -476,19 +526,8 @@ function drawAnalyserColumn(canvas: HTMLCanvasElement, analyser: AnalyserNode, c
     ctx.fillRect(x, y, columnWidth, columnWidth + 1);
   }
 
-  ctx.fillStyle = "rgba(7,16,31,.82)";
-  ctx.fillRect(0, 0, width, 44 * dpr);
-  ctx.fillStyle = "rgba(237,246,255,.82)";
-  ctx.font = `${12 * dpr}px Spline Sans Mono, monospace`;
-  ctx.textAlign = "left";
-  ctx.fillText(canvas.dataset.label || "Live spectrogram", 16 * dpr, 27 * dpr);
-
-  ctx.strokeStyle = "rgba(255,216,77,.95)";
-  ctx.lineWidth = 2 * dpr;
-  ctx.beginPath();
-  ctx.moveTo(x + columnWidth, 0);
-  ctx.lineTo(x + columnWidth, height);
-  ctx.stroke();
+  drawLiveHeader(ctx, width, dpr, label || "Live spectrogram");
+  drawLiveCursor(ctx, x + columnWidth, height, dpr);
 
   columnRef.current = (x + columnWidth) % width;
 }
@@ -501,11 +540,12 @@ function prepareLiveCanvas(canvas: HTMLCanvasElement, keepSize = false) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const width = Math.max(1, Math.round(cssWidth * dpr));
   const height = Math.max(1, Math.round(cssHeight * dpr));
-  if (!keepSize || canvas.width !== width || canvas.height !== height) {
+  const sizeChanged = canvas.width !== width || canvas.height !== height;
+  if (!keepSize || sizeChanged) {
     canvas.width = width;
     canvas.height = height;
   }
-  return { ctx: canvas.getContext("2d"), width: canvas.width, height: canvas.height, dpr };
+  return { ctx: canvas.getContext("2d"), width: canvas.width, height: canvas.height, dpr, sizeChanged };
 }
 
 function drawLiveBackground(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
@@ -530,6 +570,32 @@ function drawLiveBackground(ctx: CanvasRenderingContext2D, width: number, height
     ctx.lineTo(width, y);
     ctx.stroke();
   }
+}
+
+
+function drawLiveHeader(ctx: CanvasRenderingContext2D, width: number, dpr: number, label: string) {
+  ctx.fillStyle = "rgba(7,16,31,.82)";
+  ctx.fillRect(0, 0, width, 44 * dpr);
+  ctx.fillStyle = "rgba(237,246,255,.82)";
+  ctx.font = `${12 * dpr}px Spline Sans Mono, monospace`;
+  ctx.textAlign = "left";
+  ctx.fillText(label, 16 * dpr, 27 * dpr);
+}
+
+function drawLiveCursor(ctx: CanvasRenderingContext2D, x: number, height: number, dpr: number) {
+  ctx.strokeStyle = "rgba(255,216,77,.95)";
+  ctx.lineWidth = 2 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, height);
+  ctx.stroke();
+}
+
+function frequencyToY(frequency: number, height: number) {
+  const minFrequency = 80;
+  const maxFrequency = 8000;
+  const normalized = Math.log(Math.max(minFrequency, Math.min(maxFrequency, frequency)) / minFrequency) / Math.log(maxFrequency / minFrequency);
+  return height - normalized * height;
 }
 
 function colorRamp(value: number) {
