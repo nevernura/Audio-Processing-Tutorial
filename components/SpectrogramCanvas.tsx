@@ -19,6 +19,9 @@ type Props = {
   label?: string;
 };
 
+const FALLBACK_WIDTH = 820;
+const FALLBACK_HEIGHT = 500;
+
 export function SpectrogramCanvas({ data, cursor = null, label }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -26,50 +29,66 @@ export function SpectrogramCanvas({ data, cursor = null, label }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    function draw() {
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const parentRect = canvas.parentElement?.getBoundingClientRect();
+      const cssWidth = rect.width || parentRect?.width || FALLBACK_WIDTH;
+      const cssHeight = rect.height || parentRect?.height || FALLBACK_HEIGHT;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(cssWidth * dpr));
+      canvas.height = Math.max(1, Math.round(cssHeight * dpr));
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, "#07101f");
-    gradient.addColorStop(1, "#111c3a");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, "#07101f");
+      gradient.addColorStop(1, "#111c3a");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    drawGrid(ctx, canvas.width, canvas.height, dpr);
+      drawGrid(ctx, canvas.width, canvas.height, dpr);
 
-    if (!data) {
-      ctx.fillStyle = "rgba(237,246,255,.72)";
-      ctx.font = `${15 * dpr}px Spline Sans Mono, monospace`;
-      ctx.textAlign = "center";
-      ctx.fillText("Upload audio to render a spectrogram", canvas.width / 2, canvas.height / 2);
-      return;
+      if (!data || !data.values.length || !data.values[0]?.length) {
+        drawEmptyState(ctx, canvas.width, canvas.height, dpr);
+        return;
+      }
+
+      drawSpectrogram(ctx, data.values, canvas.width, canvas.height);
+
+      if (cursor !== null && data.duration > 0) {
+        const x = Math.max(0, Math.min(1, cursor / data.duration)) * canvas.width;
+        ctx.strokeStyle = "rgba(255,216,77,.96)";
+        ctx.lineWidth = 3 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "rgba(237,246,255,.82)";
+      ctx.font = `${12 * dpr}px Spline Sans Mono, monospace`;
+      ctx.textAlign = "left";
+      ctx.fillText(label || `${data.engine} · ${data.bins} bins · ${data.frames} frames`, 16 * dpr, 26 * dpr);
     }
 
-    drawSpectrogram(ctx, data.values, canvas.width, canvas.height);
-
-    if (cursor !== null && data.duration > 0) {
-      const x = Math.max(0, Math.min(1, cursor / data.duration)) * canvas.width;
-      ctx.strokeStyle = "rgba(255,216,77,.96)";
-      ctx.lineWidth = 3 * dpr;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "rgba(237,246,255,.82)";
-    ctx.font = `${12 * dpr}px Spline Sans Mono, monospace`;
-    ctx.textAlign = "left";
-    ctx.fillText(label || `${data.engine} · ${data.bins} bins · ${data.frames} frames`, 16 * dpr, 26 * dpr);
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas);
+    if (canvas.parentElement) observer.observe(canvas.parentElement);
+    return () => observer.disconnect();
   }, [data, cursor, label]);
 
-  return <canvas ref={canvasRef} aria-label="Spectrogram visualization" />;
+  return <canvas ref={canvasRef} className="spectrogram-canvas" aria-label="Spectrogram visualization" />;
+}
+
+function drawEmptyState(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
+  ctx.fillStyle = "rgba(237,246,255,.72)";
+  ctx.font = `${15 * dpr}px Spline Sans Mono, monospace`;
+  ctx.textAlign = "center";
+  ctx.fillText("Upload audio to render a spectrogram", width / 2, height / 2);
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
