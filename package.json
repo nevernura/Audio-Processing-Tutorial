@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "description": "Interactive audio signal tutorial with upload spectrograms and synced sound galleries.",
   "scripts": {
+    "setup:dev": "bash scripts/setup_dev.sh",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
