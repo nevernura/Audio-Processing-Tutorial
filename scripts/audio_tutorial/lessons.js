@@ -53,9 +53,9 @@ const STEPS = [
     viz:visuals.WindowViz
   },
   {
-    kicker:"07 · Spectrogram", title:"See frequency change over time", short:"Live spectrogram",
-    intuition:`A spectrogram stacks many spectra side by side. Time runs left to right, frequency rises upward, and brightness means energy. Start the sweep and watch pitch draw a diagonal line. Then try the mic or an audio file if your browser allows it.`,
-    takeaway:`This is the browser version of the notebook's STFT and spectrogram plots.`,
+    kicker:"07 · Spectrogram", title:"See frequency change over time", short:"Spectrogram lab",
+    intuition:`A spectrogram stacks many spectra side by side. Time runs left to right, frequency rises upward, and brightness means energy. Page 7 now opens a dedicated lab with three reliable source modes: generated sweep, uploaded audio, and microphone.`,
+    takeaway:`Use the spectrogram lab for the actual display: upload uses the Python/librosa API with browser fallback, while sweep and mic use live Canvas/Web Audio drawing.`,
     chips:["time","frequency","energy"],
     math:`<p>Most spectrograms display power in decibels:</p><p>$$S_\\text{dB}=20\\log_{10}|\\text{STFT}|.$$</p><p>Brighter colors mean larger magnitude in that time-frequency cell.</p>`,
     viz:visuals.SpectrogramViz
